@@ -22,10 +22,92 @@ param(
     [string]$OutputRoot = ""
 )
 
+$utf8WithBom = New-Object System.Text.UTF8Encoding $true
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+
+function Ensure-Directory {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    }
+}
+
+function Get-MemoryVersionFromText {
+    param([string]$Text)
+    if ($Text -match '<!--\s*memory-version:\s*(\d+)\.(\d+)\.(\d+)\s*-->') {
+        return @{
+            Text = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+            Major = [int]$Matches[1]
+            Minor = [int]$Matches[2]
+            Patch = [int]$Matches[3]
+        }
+    }
+    return @{
+        Text = "1.0.0"
+        Major = 1
+        Minor = 0
+        Patch = 0
+    }
+}
+
+function Update-GlobalKnowledgeMap {
+    param(
+        [string]$WorkspaceRoot,
+        [string]$Topic,
+        [string]$FolderName
+    )
+
+    $memoryDir = Join-Path $WorkspaceRoot ".memory"
+    $historyDir = Join-Path $WorkspaceRoot ".history\.memory\全局知识地图"
+    $mapPath = Join-Path $memoryDir "全局知识地图.md"
+    Ensure-Directory $memoryDir
+    Ensure-Directory $historyDir
+
+    $todayDate = Get-Date -Format "yyyy-MM-dd"
+    $row = "| $Topic | $FolderName | $todayDate | 进行中 | - |"
+
+    if (Test-Path -LiteralPath $mapPath) {
+        $mapText = [System.IO.File]::ReadAllText($mapPath, $utf8NoBom)
+        $oldVersion = Get-MemoryVersionFromText $mapText
+        $snapshotPath = Join-Path $historyDir "全局知识地图_v$($oldVersion.Text).md"
+        Copy-Item -LiteralPath $mapPath -Destination $snapshotPath -Force
+
+        $newVersion = "$($oldVersion.Major).$($oldVersion.Minor + 1).0"
+        $header = "<!-- memory-version: $newVersion -->"
+        if ($mapText -match '^\s*<!--\s*memory-version:\s*\d+\.\d+\.\d+\s*-->') {
+            $mapText = [regex]::Replace(
+                $mapText,
+                '^\s*<!--\s*memory-version:\s*\d+\.\d+\.\d+\s*-->',
+                $header,
+                1
+            )
+        } else {
+            $mapText = "$header`r`n" + $mapText
+        }
+    } else {
+        $mapText = @"
+<!-- memory-version: 1.0.0 -->
+# 全局知识地图
+
+> 所有研究子项目的总索引，新建子项目时自动更新。
+
+| 话题 | 子项目文件夹 | 创建时间 | 状态 | 核心结论（一句话） |
+|------|------------|---------|------|----------------|
+"@
+    }
+
+    if ($mapText -notmatch [regex]::Escape("| $Topic | $FolderName |")) {
+        $mapText = $mapText.TrimEnd() + "`r`n$row`r`n"
+    }
+
+    [System.IO.File]::WriteAllText($mapPath, $mapText, $utf8WithBom)
+    Write-Host "[OK] Updated global knowledge map: $mapPath"
+}
+
+$workspaceRoot = $null
 if ($OutputRoot -eq "") {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $searchDir = $scriptDir
-    $workspaceRoot = $null
     while ($searchDir) {
         if ((Test-Path (Join-Path $searchDir "output")) -and (Test-Path (Join-Path $searchDir ".history"))) {
             $workspaceRoot = $searchDir
@@ -40,6 +122,9 @@ if ($OutputRoot -eq "") {
         exit 1
     }
     $OutputRoot = Join-Path $workspaceRoot "output"
+} else {
+    $outputRootFull = [System.IO.Path]::GetFullPath($OutputRoot)
+    $workspaceRoot = Split-Path -Parent $outputRootFull
 }
 
 $existingProjectNumbers = @(
@@ -94,10 +179,8 @@ $versionRecordContent = @"
 ---
 
 "@
-$utf8WithBom = New-Object System.Text.UTF8Encoding $true
 [System.IO.File]::WriteAllText($versionRecordPath, $versionRecordContent, $utf8WithBom)
 Write-Host "[OK] Created version record: $versionRecordPath"
-$todayDate = Get-Date -Format "yyyy-MM-dd"
 $catalogPath = Join-Path $projectPath "目录.md"
 $catalogContent = @"
 # 目录 · $Topic
@@ -112,6 +195,7 @@ $catalogContent = @"
 [System.IO.File]::WriteAllText($catalogPath, $catalogContent, $utf8WithBom)
 Write-Host "[OK] Created catalog: $catalogPath"
 
+Update-GlobalKnowledgeMap -WorkspaceRoot $workspaceRoot -Topic $Topic -FolderName $folderName
 
 Write-Host ""
 Write-Host "=========================================="

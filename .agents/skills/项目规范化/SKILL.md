@@ -29,8 +29,8 @@ powershell -ExecutionPolicy Bypass -File "e:\my_project\知识研究\.agents\ski
 |---|------|---------|---------|
 | 1 | 根目录 | `.agents/` `.history/` `.memory/` `output/` `input/` `.temp/` 是否存在 | `06_.temp和input检查` + `01_根目录六文件夹` |
 | 2 | .agents/ | 目录结构（rules/ + 6 个 skills/）+ 关键文件存在 | `02_.agents目录完整性` |
-| 3 | output/ | 子项目文件夹命名 `{编号}_{主题}_v{版本}`，无零散文件 | `03_output结构命名规范` |
-| 4 | .memory/ | 四区块完整、固定文件名、无 _v* 历史副本残留 | `04_.memory结构命名规范` |
+| 3 | output/ | 子项目文件夹命名 `{编号}_{主题}_v{版本}`，无零散文件；子项目内部补查 `目录.md`、`版本记录.md`、内容文件 `{NN}_` 编号 | `03_output结构命名规范` + 框架体检运行项 |
+| 4 | .memory/ | 四区块完整、固定文件名、无 _v* 历史副本残留；全局知识地图无乱码且与 `output/` 对齐 | `04_.memory结构命名规范` + 框架体检运行项 |
 | 5 | .history/ | 仅 `.agents/` `.memory/` `output/` 三子目录，快照含时间戳 | `05_.history结构命名规范` |
 | 6 | .temp/ + input/ | 存在即可 | `06_.temp和input检查` |
 
@@ -51,7 +51,9 @@ powershell -ExecutionPolicy Bypass -File "e:\my_project\知识研究\.agents\ski
             └── 无时间戳副本/
 ```
 
-修正项（缺少）直接创建。
+修正项（缺少）直接创建。对 `output/` 子项目内部做补齐或重命名之前，脚本会先把该子项目快照到 `.history/output/{子项目文件夹名}_{yyyyMMddHHmmss}/`，再补建 `目录.md`、`版本记录.md`，并给未编号内容文件加 `{NN}_` 前缀。全局知识地图修复会先把旧文件保存到 `.history/.memory/全局知识地图/`，再按当前 `output/` 重建。
+
+> 老项目迁移顺序：必须先运行最新版初始化 EXE 注入最新 `.agents` 模板，再执行本 Skill。若缺失完整 Rule/Skill 文件，`--Fix` 不会伪造空 Skill，只会提示先注入模板。
 
 ## 边界
 

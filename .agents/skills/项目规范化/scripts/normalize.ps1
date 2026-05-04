@@ -23,6 +23,7 @@ if (-not $wn) { Write-Host "ERROR: Workspace root not found"; exit 1 }
 
 $issues = 0; $warnings = 0; $passes = 0
 $fixLog = @()
+$snapshottedProjects = @{}
 
 function cnp($n, $b) { return [System.Text.Encoding]::UTF8.GetString($b) }
 
@@ -50,6 +51,158 @@ function move-extra($src, $dstRel) {
         $script:fixLog += "Moved: $src -> $target"
         Write-Host "  [FIXED] Moved to $($target.Substring($wn.Length+1))"
     }
+}
+
+function Read-Utf8Text($path) {
+    return [System.IO.File]::ReadAllText($path, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Write-Utf8BomText($path, $content) {
+    [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($true))
+}
+
+function Has-Mojibake($text) {
+    if ($null -eq $text) { return $false }
+    return ($text -match '[鐗璁椤杩椋宸浣绠妫鏌鍏鐭绯荤粺]')
+}
+
+function Get-ProjectTopic($folderName) {
+    if ($folderName -match '^\d{2}_(.+)_v\d+\.\d+\.\d+$') { return $Matches[1] }
+    return $folderName
+}
+
+function Get-MemoryVersion($text) {
+    if ($text -match '<!--\s*memory-version:\s*(\d+)\.(\d+)\.(\d+)\s*-->') {
+        return @{
+            Text = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+            Major = [int]$Matches[1]
+            Minor = [int]$Matches[2]
+            Patch = [int]$Matches[3]
+        }
+    }
+    return @{
+        Text = "1.0.0"
+        Major = 1
+        Minor = 0
+        Patch = 0
+    }
+}
+
+function Ensure-ProjectSnapshot($projectDir) {
+    $name = Split-Path $projectDir -Leaf
+    if ($script:snapshottedProjects.ContainsKey($name)) { return }
+    $ts = Get-Date -Format "yyyyMMddHHmmss"
+    $histOut = Join-Path $wn ".history\output"
+    if (-not (Test-Path $histOut)) { New-Item -ItemType Directory -Path $histOut -Force | Out-Null }
+    $snapshot = Join-Path $histOut "${name}_$ts"
+    Copy-Item -LiteralPath $projectDir -Destination $snapshot -Recurse -Force
+    $script:snapshottedProjects[$name] = $snapshot
+    $script:fixLog += "Snapshot: $projectDir -> $snapshot"
+    Write-Host "  [FIXED] Snapshot before project normalization: $($snapshot.Substring($wn.Length+1))"
+}
+
+function Get-ProjectContentFiles($projectDir) {
+    $fixed = @("$S_mulu.md", "$S_ver_log.md")
+    return @(Get-ChildItem -LiteralPath $projectDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $fixed -notcontains $_.Name -and $_.Name -match '\.(md|html|txt|ps1)$' } |
+        Sort-Object CreationTime, Name)
+}
+
+function Build-CatalogContent($projectDir) {
+    $topic = Get-ProjectTopic (Split-Path $projectDir -Leaf)
+    $rows = @()
+    $files = Get-ProjectContentFiles $projectDir
+    foreach ($f in $files) {
+        $num = ""
+        if ($f.Name -match '^(\d{2})_') { $num = $Matches[1] }
+        $created = Get-Date $f.CreationTime -Format "yyyy-MM-dd"
+        $modified = Get-Date $f.LastWriteTime -Format "yyyy-MM-dd"
+        $rows += "| $num | [$($f.Name)](./$($f.Name)) | | $created | $modified |"
+    }
+    $content = "# $S_mulu · $topic`r`n`r`n> 本子项目内所有内容文件的索引。`r`n`r`n"
+    $content += "| # | 文件 | 说明 | 首次落盘 | 最近更新 |`r`n|---|------|------|---------|---------|`r`n"
+    if ($rows.Count -gt 0) { $content += ($rows -join "`r`n") + "`r`n" }
+    else { $content += "| 待新增文件后填写 | | | | |`r`n" }
+    return $content
+}
+
+function Ensure-VersionRecord($projectDir) {
+    $topic = Get-ProjectTopic (Split-Path $projectDir -Leaf)
+    $path = Join-Path $projectDir "$S_ver_log.md"
+    if (Test-Path $path) { return }
+    $now = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $content = "# $S_ver_log · $topic`r`n`r`n> 记录子项目的版本变更历史。`r`n`r`n---`r`n`r`n"
+    $content += "## 规范化补建 ($now)`r`n`r`n**变更类型**：PATCH`r`n**变更描述**：老项目迁移时补建版本记录。`r`n`r`n---`r`n"
+    Write-Utf8BomText $path $content
+    Write-Host "  [FIXED] Created: $((Join-Path (Split-Path $projectDir -Leaf) "$S_ver_log.md"))"
+}
+
+function Normalize-ProjectInternals($projectDir) {
+    Ensure-ProjectSnapshot $projectDir
+
+    $files = Get-ProjectContentFiles $projectDir
+    $existingNums = @($files | ForEach-Object {
+        if ($_.Name -match '^(\d{2})_') { [int]$Matches[1] }
+    })
+    $next = if ($existingNums.Count -gt 0) { ($existingNums | Sort-Object -Descending | Select-Object -First 1) + 1 } else { 1 }
+
+    foreach ($f in $files) {
+        if ($f.Name -notmatch '^\d{2}_') {
+            do {
+                $newName = ("{0:D2}_" -f $next) + $f.Name
+                $newPath = Join-Path $projectDir $newName
+                $next++
+            } while (Test-Path $newPath)
+            Move-Item -LiteralPath $f.FullName -Destination $newPath -Force
+            Write-Host "  [FIXED] Renamed: $($f.Name) -> $newName"
+        }
+    }
+
+    $catalogPath = Join-Path $projectDir "$S_mulu.md"
+    Write-Utf8BomText $catalogPath (Build-CatalogContent $projectDir)
+    Write-Host "  [FIXED] Updated: $((Join-Path (Split-Path $projectDir -Leaf) "$S_mulu.md"))"
+    Ensure-VersionRecord $projectDir
+}
+
+function Repair-GlobalKnowledgeMap($mapPath, $outputDirs) {
+    $oldText = if (Test-Path $mapPath) { Read-Utf8Text $mapPath } else { "" }
+    $oldVersion = Get-MemoryVersion $oldText
+    if (Test-Path $mapPath) {
+        $histDir = Join-Path $wn ".history\.memory\$S_map"
+        if (-not (Test-Path $histDir)) { New-Item -ItemType Directory -Path $histDir -Force | Out-Null }
+        Copy-Item -LiteralPath $mapPath -Destination (Join-Path $histDir "$($S_map)_v$($oldVersion.Text).md") -Force
+    }
+
+    $rowInfo = @{}
+    foreach ($line in ($oldText -split "`r?`n")) {
+        if ($line -match '^\|') {
+            $cells = @($line.Trim('|') -split '\|' | ForEach-Object { $_.Trim() })
+            if ($cells.Count -ge 5 -and $cells[1] -match '^\d{2}_.+_v\d+\.\d+\.\d+$' -and -not (Has-Mojibake $line)) {
+                $rowInfo[$cells[1]] = @{ Date = $cells[2]; Status = $cells[3]; Core = $cells[4] }
+            }
+        }
+    }
+
+    $newVersion = "$($oldVersion.Major).$($oldVersion.Minor + 1).0"
+    $content = "<!-- memory-version: $newVersion -->`r`n# $S_map`r`n`r`n"
+    $content += "> 所有研究子项目的总索引，新建子项目时自动更新。`r`n`r`n"
+    $content += "| 话题 | 子项目文件夹 | 创建时间 | 状态 | 核心结论（一句话） |`r`n"
+    $content += "|------|------------|---------|------|----------------|`r`n"
+    foreach ($d in ($outputDirs | Sort-Object Name)) {
+        $topic = Get-ProjectTopic $d.Name
+        if ($rowInfo.ContainsKey($d.Name)) {
+            $created = $rowInfo[$d.Name].Date
+            $status = $rowInfo[$d.Name].Status
+            $core = $rowInfo[$d.Name].Core
+        } else {
+            $created = Get-Date $d.CreationTime -Format "yyyy-MM-dd"
+            $status = "进行中"
+            $core = "-"
+        }
+        $content += "| $topic | $($d.Name) | $created | $status | $core |`r`n"
+    }
+    Write-Utf8BomText $mapPath $content
+    Write-Host "  [FIXED] Rebuilt: .memory/$($S_map).md"
 }
 
 Write-Host ""
@@ -119,7 +272,9 @@ if (Test-Path $agents) {
             if ($existingSkills -notcontains $s) {
                 Write-Host "  [FAIL] Missing skill: skills/$s/"
                 $issues++
-                if ($Fix) { New-Item -ItemType Directory -Path (Join-Path $skillsDir $s) -Force | Out-Null; Write-Host "  [FIXED] Created: skills/$s/" }
+                if ($Fix) {
+                    Write-Host "  [NEEDS TEMPLATE] Cannot synthesize skills/$s/. Run the latest init EXE first, then run normalization again."
+                }
             } else { Write-Host "  [PASS] skills/$s/"; $passes++ }
         }
         # Check extra skills
@@ -168,6 +323,38 @@ if (Test-Path $out) {
             if ($Fix) { move-extra $d.FullName "output/$($d.Name)" }
         } else { Write-Host "  [PASS] $($d.Name)"; $passes++ }
     }
+
+    Write-Host ""
+    Write-Host "--- 3b. output/ Project Internals ---"
+    foreach ($d in $outDirs | Where-Object { $_.Name -match '^\d{2}_.+_v\d+\.\d+\.\d+$' }) {
+        $catalogPath = Join-Path $d.FullName "$S_mulu.md"
+        $versionPath = Join-Path $d.FullName "$S_ver_log.md"
+        $contentFiles = Get-ProjectContentFiles $d.FullName
+        $unnumbered = @($contentFiles | Where-Object { $_.Name -notmatch '^\d{2}_' })
+        $needsProjectFix = $false
+
+        if (-not (Test-Path $catalogPath)) {
+            Write-Host "  [FAIL] Missing $S_mulu.md: $($d.Name)"
+            $issues++
+            $needsProjectFix = $true
+        }
+        if (-not (Test-Path $versionPath)) {
+            Write-Host "  [FAIL] Missing $S_ver_log.md: $($d.Name)"
+            $issues++
+            $needsProjectFix = $true
+        }
+        if ($unnumbered.Count -gt 0) {
+            Write-Host "  [WARN] Unnumbered content files in $($d.Name): $($unnumbered.Count)"
+            $warnings++
+            $needsProjectFix = $true
+        }
+        if (-not $needsProjectFix) {
+            Write-Host "  [PASS] $($d.Name) internals"
+            $passes++
+        } elseif ($Fix) {
+            Normalize-ProjectInternals $d.FullName
+        }
+    }
 } else {
     Write-Host "  [FAIL] output/ missing (covered by check #1)"
     $issues++
@@ -195,7 +382,40 @@ if (Test-Path $mem) {
     if (-not (Test-Path $memMap)) {
         Write-Host "  [FAIL] Missing: .memory/$($S_map).md"
         $issues++
+        if ($Fix -and (Test-Path (Join-Path $wn "output"))) {
+            $outputDirsForMap = @(Get-ChildItem (Join-Path $wn "output") -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{2}_.+_v\d+\.\d+\.\d+$' })
+            Repair-GlobalKnowledgeMap $memMap $outputDirsForMap
+        }
     } else { Write-Host "  [PASS] .memory/$($S_map).md"; $passes++ }
+
+    if (Test-Path $memMap) {
+        $mapText = Read-Utf8Text $memMap
+        $outputDirsForMap = @(Get-ChildItem (Join-Path $wn "output") -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{2}_.+_v\d+\.\d+\.\d+$' })
+        $mapProjects = @([regex]::Matches($mapText, '\| ([0-9]{2}_.+?_v[0-9]+\.[0-9]+\.[0-9]+) \|') | ForEach-Object { $_.Groups[1].Value })
+        $outputNames = @($outputDirsForMap | ForEach-Object { $_.Name })
+        $mapIsBad = Has-Mojibake $mapText
+        $missingInMap = @($outputNames | Where-Object { $_ -notin $mapProjects })
+        $extraInMap = @($mapProjects | Where-Object { $_ -notin $outputNames })
+
+        if ($mapIsBad) {
+            Write-Host "  [FAIL] $($S_map).md appears to contain mojibake"
+            $issues++
+        }
+        foreach ($m in $missingInMap) {
+            Write-Host "  [WARN] output/ not in $($S_map): $m"
+            $warnings++
+        }
+        foreach ($m in $extraInMap) {
+            Write-Host "  [WARN] $($S_map) not in output/: $m"
+            $warnings++
+        }
+        if (($mapIsBad -or $missingInMap.Count -gt 0 -or $extraInMap.Count -gt 0) -and $Fix) {
+            Repair-GlobalKnowledgeMap $memMap $outputDirsForMap
+        } elseif (-not $mapIsBad -and $missingInMap.Count -eq 0 -and $extraInMap.Count -eq 0) {
+            Write-Host "  [PASS] $($S_map).md matches output/"
+            $passes++
+        }
+    }
 
     # System records fixed files
     if (Test-Path $memSys) {

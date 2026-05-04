@@ -96,7 +96,7 @@ powershell -ExecutionPolicy Bypass -File "e:\my_project\知识研究\.agents\ski
 
 ### 第 5 步：更新全局知识地图
 
-找到 `.memory/全局知识地图.md`，对其执行版本控制备份（`MEMORY` 模式，通常使用 `MINOR`），然后在表格中追加一行：
+`new_project.ps1` 会自动用 UTF-8 API 更新 `.memory/全局知识地图.md`：先把旧地图保存到 `.history/.memory/全局知识地图/`，再在表格中追加一行：
 
 ```
 | {主题} | {子项目文件夹名} | {创建日期} | 进行中 | - |
