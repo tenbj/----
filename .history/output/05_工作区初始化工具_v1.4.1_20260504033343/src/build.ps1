@@ -1,0 +1,28 @@
+﻿<#
+.SYNOPSIS
+    Build init_workspace.py + templates into single-file EXE.
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File ".\build.ps1"
+#>
+$ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
+$Version = "1.4.0"
+$ExeName = "初始化工作区_v$Version"
+Write-Host ""
+Write-Host "=========================================="
+Write-Host "  Build: $ExeName.exe"
+Write-Host "=========================================="
+$pyVersion = python --version 2>&1
+Write-Host "  Python : $pyVersion"
+$piCheck = pip show pyinstaller 2>&1
+if ($piCheck -match "WARNING: Package") { pip install pyinstaller }
+Write-Host "  Building EXE ...`n"
+$srcDir = $PSScriptRoot
+$templatesAbs = Join-Path $srcDir "templates"
+$distAbs = Join-Path (Split-Path $srcDir -Parent) "dist"
+$buildTmpAbs = Join-Path (Split-Path $srcDir -Parent) "build_tmp"
+$scriptAbs = Join-Path $srcDir "init_workspace.py"
+pyinstaller --onefile --noconsole --add-data "$templatesAbs;templates" --name $ExeName --distpath $distAbs --workpath $buildTmpAbs --specpath $buildTmpAbs $scriptAbs
+Write-Host ""
+$exePath = Join-Path $distAbs "$ExeName.exe"
+if (Test-Path $exePath) { $sizeMB = [math]::Round((Get-Item $exePath).Length / 1MB, 1); Write-Host "==========================================`n  Build Successful`n  EXE  : $exePath`n  Size : $sizeMB MB`n==========================================" } else { Write-Host "==========================================`n  Build Failed`n==========================================" }

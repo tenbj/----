@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>知识研究项目运作机制</title>
+  <style>
+    :root {
+      --bg: #f3efe5;
+      --paper: rgba(255, 251, 244, 0.88);
+      --panel: rgba(255, 255, 255, 0.74);
+      --text: #1d2b24;
+      --muted: #58655e;
+      --line: rgba(29, 43, 36, 0.12);
+      --accent: #1d6f63;
+      --accent-2: #c76a3c;
+      --accent-3: #d6b257;
+      --shadow: 0 24px 60px rgba(40, 34, 24, 0.12);
+      --radius-lg: 28px;
+      --radius-md: 18px;
+      --radius-sm: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(199, 106, 60, 0.18), transparent 32%),
+        radial-gradient(circle at top right, rgba(29, 111, 99, 0.18), transparent 28%),
+        linear-gradient(180deg, #f8f5ed 0%, var(--bg) 100%);
+      line-height: 1.7;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(29, 43, 36, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(29, 43, 36, 0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 88%);
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero {
+      padding: 40px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 248, 238, 0.88)),
+        rgba(255, 255, 255, 0.7);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 260px;
+      height: 260px;
+      right: -80px;
+      top: -70px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(29, 111, 99, 0.18), transparent 68%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      background: rgba(29, 111, 99, 0.1);
+      border: 1px solid rgba(29, 111, 99, 0.14);
+    }
+
+    h1 {
+      margin: 18px 0 14px;
+      font-size: clamp(34px, 5vw, 64px);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      max-width: 9em;
+    }
+
+    .lead {
+      margin: 0;
+      max-width: 780px;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .hero-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .summary-card,
+    .card,
+    .step,
+    .note,
+    .pillars .pillar {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 14px 32px rgba(40, 34, 24, 0.07);
+    }
+
+    .summary-card {
+      padding: 18px;
+      border-radius: var(--radius-md);
+    }
+
+    .summary-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 18px;
+    }
+
+    .summary-card span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    section {
+      margin-top: 28px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 24px;
+      margin-bottom: 16px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: -0.03em;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 760px;
+    }
+
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .pillars .pillar {
+      padding: 22px;
+      border-radius: var(--radius-md);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pillars .pillar::before {
+      content: "";
+      position: absolute;
+      inset: auto -10% 0 auto;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      opacity: 0.18;
+      background: currentColor;
+      filter: blur(10px);
+    }
+
+    .pillar:nth-child(1) { color: var(--accent); }
+    .pillar:nth-child(2) { color: #34699a; }
+    .pillar:nth-child(3) { color: var(--accent-2); }
+    .pillar:nth-child(4) { color: #88753b; }
+
+    .pillar h3,
+    .card h3,
+    .step h3 {
+      margin: 0 0 10px;
+      font-size: 22px;
+      color: var(--text);
+    }
+
+    .pillar p,
+    .card p,
+    .step p,
+    .note p,
+    li {
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .step {
+      padding: 22px 20px;
+      border-radius: var(--radius-md);
+      position: relative;
+    }
+
+    .step .num {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      margin-bottom: 14px;
+      background: rgba(29, 111, 99, 0.12);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      padding: 24px;
+      border-radius: var(--radius-md);
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(199, 106, 60, 0.12);
+      color: var(--accent-2);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .note {
+      padding: 22px;
+      border-radius: var(--radius-md);
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+
+    code,
+    pre {
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 8px;
+      background: rgba(29, 43, 36, 0.08);
+      color: var(--text);
+    }
+
+    pre {
+      margin: 0;
+      padding: 18px;
+      border-radius: var(--radius-md);
+      background: rgba(23, 31, 27, 0.94);
+      color: #e7f0ea;
+      overflow: auto;
+      line-height: 1.55;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    ul {
+      padding-left: 20px;
+      margin: 14px 0 0;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+    }
+
+    .footer {
+      margin-top: 28px;
+      padding: 24px 28px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: rgba(255, 252, 247, 0.9);
+      color: var(--muted);
+    }
+
+    .footer strong {
+      color: var(--text);
+    }
+
+    @media (max-width: 980px) {
+      .hero-summary,
+      .pillars,
+      .flow,
+      .cards,
+      .grid-3,
+      .split {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .page {
+        width: min(100% - 20px, 1180px);
+        padding: 16px 0 36px;
+      }
+
+      .hero {
+        padding: 24px;
+      }
+
+      .hero-summary,
+      .pillars,
+      .flow,
+      .cards,
+      .grid-3,
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        max-width: none;
+      }
+
+      .section-head {
+        display: block;
+      }
+
+      .section-head p {
+        margin-top: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div class="eyebrow">Knowledge Workspace / Operating Model</div>
+      <h1>知识研究项目是怎样运作起来的</h1>
+      <p class="lead">
+        这套机制的核心不是“把文件放进几个目录”那么简单，而是把工作单元、内容安全、版本演进和长期记忆拆成四个彼此协作的系统。
+        子项目负责承接每个新主题，备份负责兜底，版本负责表达内容状态，记忆负责把上下文沉淀下来。
+      </p>
+      <div class="hero-summary">
+        <div class="summary-card">
+          <strong>子项目</strong>
+          <span>每个新话题先创建一个独立工作空间，所有产出都归档到自己的目录里。</span>
+        </div>
+        <div class="summary-card">
+          <strong>备份</strong>
+          <span>修改前先快照，确保旧内容能追溯，不让一次改动破坏历史。</span>
+        </div>
+        <div class="summary-card">
+          <strong>版本</strong>
+          <span>用 <code>vMAJOR.MINOR.PATCH</code> 表达变更幅度，让“改了什么”一眼可懂。</span>
+        </div>
+        <div class="summary-card">
+          <strong>记忆</strong>
+          <span>把项目对话、系统治理、知识提炼分流存储，避免长期上下文混乱。</span>
+        </div>
+      </div>
+    </header>
+
+    <section>
+      <div class="section-head">
+        <h2>四个系统，各管一件事</h2>
+        <p>把这四层分开之后，项目才会稳定。否则新主题、旧版本、系统规则和对话摘要会互相污染，最后谁也说不清。</p>
+      </div>
+      <div class="pillars">
+        <article class="pillar">
+          <h3>.agent</h3>
+          <p>规则层与工具层。这里定义“应该怎么做”，例如子项目命名规则、备份规则、记忆路由规则。</p>
+        </article>
+        <article class="pillar">
+          <h3>output</h3>
+          <p>工作层。每个子项目都是一个独立的输出空间，研究文档、HTML 页面、阶段成果都放这里。</p>
+        </article>
+        <article class="pillar">
+          <h3>.history</h3>
+          <p>归档层。任何重要修改前先留快照，保证能回看旧文件、旧规则和旧技能目录。</p>
+        </article>
+        <article class="pillar">
+          <h3>.memory</h3>
+          <p>记忆层。负责保存项目对话、系统治理记录、知识提炼和全局知识地图。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>一条完整工作流</h2>
+        <p>项目不是从“写文件”开始，而是从“先建立边界”开始。每个新主题都沿着下面这条链路往前走。</p>
+      </div>
+      <div class="flow">
+        <article class="step">
+          <div class="num">01</div>
+          <h3>新话题进入</h3>
+          <p>先判断是不是新的研究主题。如果是，就不能直接把文件丢进 <code>output/</code> 根目录。</p>
+        </article>
+        <article class="step">
+          <div class="num">02</div>
+          <h3>创建子项目</h3>
+          <p>生成形如 <code>03_项目运作机制_202605031830</code> 的目录，让这个话题拥有自己的工作空间。</p>
+        </article>
+        <article class="step">
+          <div class="num">03</div>
+          <h3>开始产出文件</h3>
+          <p>所有 HTML、Markdown、分析稿都只写进这个子项目，不越界，不混放。</p>
+        </article>
+        <article class="step">
+          <div class="num">04</div>
+          <h3>修改前先备份</h3>
+          <p>内容文件走版本备份，规则文件走配置快照，Skill 目录走文件夹快照。</p>
+        </article>
+        <article class="step">
+          <div class="num">05</div>
+          <h3>回复后沉淀记忆</h3>
+          <p>系统自动判断这轮内容属于项目、系统还是两者兼有，然后分别写入对应记忆文件。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>子项目机制</h2>
+        <p>子项目是这套系统的最小工作单元。它不是一个普通文件夹，而是一次主题研究的边界。</p>
+      </div>
+      <div class="cards">
+        <article class="card">
+          <span class="tag">命名规则</span>
+          <h3>固定格式</h3>
+          <p><code>output/{编号}_{主题}_{YYYYMMDDHHmm}</code></p>
+          <ul>
+            <li>编号表示顺序，例如 <code>01</code>、<code>02</code>、<code>03</code></li>
+            <li>主题必须是中文，直接说明研究对象</li>
+            <li>时间戳标记创建时刻，避免重名，也让来源更清晰</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag">当前项目实例</span>
+          <h3>已经存在的子项目</h3>
+          <ul>
+            <li><code>01_版本管理_202605031505</code></li>
+            <li><code>02_记忆系统治理方案_202605031801</code></li>
+            <li><code>03_项目运作机制_202605031830</code></li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>备份与版本机制</h2>
+        <p>备份解决“安全”，版本解决“表达”。两者不是一个概念，但总是成对出现。</p>
+      </div>
+      <div class="grid-3">
+        <article class="note">
+          <strong>FILE 模式</strong>
+          <p>用于 <code>output/</code> 或其他内容文件。旧文件先备份进 <code>.history/</code>，再把当前文件重命名成新版本继续修改。</p>
+        </article>
+        <article class="note">
+          <strong>CONFIG 模式</strong>
+          <p>用于 <code>.agent/rules/</code>。原文件名保持不变，只在 <code>.history/.agent/rules/</code> 留一份时间戳快照。</p>
+        </article>
+        <article class="note">
+          <strong>FOLDER 模式</strong>
+          <p>用于 <code>.agent/skills/</code>。不是只备份一个文件，而是把整个 Skill 目录快照到 <code>.history/</code>。</p>
+        </article>
+      </div>
+      <div class="cards" style="margin-top: 16px;">
+        <article class="card">
+          <span class="tag">版本号语义</span>
+          <h3>为什么要区分 MAJOR / MINOR / PATCH</h3>
+          <ul>
+            <li><code>MAJOR</code>：结构重构、框架变化、旧内容不再兼容</li>
+            <li><code>MINOR</code>：新增章节、新增说明、向下兼容的扩展</li>
+            <li><code>PATCH</code>：修字句、补细节、纠正错误</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag">典型结果</span>
+          <h3>一个文件如何演进</h3>
+          <p>例如当前页面首次创建为 <code>项目运作机制说明_v1.0.0.html</code>。以后如果继续补充流程图或新机制，修改前先备份，再改成 <code>v1.1.0</code> 或 <code>v1.0.1</code>。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>记忆机制</h2>
+        <p>记忆系统的关键不是“都记下来”，而是“记对地方”。否则项目上下文和系统治理会越积越乱。</p>
+      </div>
+      <div class="cards">
+        <article class="card">
+          <span class="tag">路由规则</span>
+          <h3>PROJECT / SYSTEM / BOTH</h3>
+          <ul>
+            <li><code>PROJECT</code>：研究主题本身、输出内容、分析过程</li>
+            <li><code>SYSTEM</code>：Rule、Skill、脚本、备份策略、记忆结构</li>
+            <li><code>BOTH</code>：既有业务内容，也有系统治理内容，必须拆成两条分别写</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag">存储位置</span>
+          <h3>四类记忆文件</h3>
+          <ul>
+            <li><code>.memory/对话记录/</code>：项目对话摘要，按子项目追加</li>
+            <li><code>.memory/系统记录/rules-skills.md</code>：系统治理对话集中记录</li>
+            <li><code>.memory/知识提炼/</code>：沉淀长期有价值结论，带版本</li>
+            <li><code>.memory/全局知识地图_v*.md</code>：记录全部子项目索引</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="split">
+      <article class="card">
+        <div class="section-head" style="display:block; margin-bottom: 14px;">
+          <h2 style="font-size: 24px; margin-bottom: 8px;">目录关系图</h2>
+          <p>下面这棵树展示的不是“所有文件”，而是这套机制最关键的几条骨架。</p>
+        </div>
+        <pre>知识研究/
+├── .agent/
+│   ├── rules/                  # 规则：定义边界与约束
+│   └── skills/                 # 技能：定义执行方法
+├── output/
+│   ├── 01_版本管理_202605031505/
+│   ├── 02_记忆系统治理方案_202605031801/
+│   └── 03_项目运作机制_202605031830/
+│       └── 项目运作机制说明_v1.0.0.html
+├── .history/                   # 备份与快照层
+└── .memory/
+    ├── 对话记录/               # 项目对话摘要
+    ├── 系统记录/               # 系统治理摘要
+    ├── 知识提炼/               # 长期结论沉淀
+    └── 全局知识地图_v1.2.0.md</pre>
+      </article>
+      <article class="card">
+        <div class="section-head" style="display:block; margin-bottom: 14px;">
+          <h2 style="font-size: 24px; margin-bottom: 8px;">一句话抓重点</h2>
+          <p>如果只记住四句话，这套系统也就抓住八成了。</p>
+        </div>
+        <ul>
+          <li>子项目是工作边界，新话题先建目录，再产出内容。</li>
+          <li>备份是安全网，任何重要修改前都先留旧版本。</li>
+          <li>版本号是语言，不只是文件名装饰，它在表达改动幅度。</li>
+          <li>记忆必须分流，项目内容和系统治理不能混写在一处。</li>
+        </ul>
+      </article>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>这套机制最终解决了什么</h2>
+        <p>它把一个容易越做越乱的知识工作区，变成了一个可以持续扩展、持续回看、持续演进的研究系统。</p>
+      </div>
+      <div class="grid-3">
+        <article class="note">
+          <strong>避免内容散落</strong>
+          <p>每个主题都能找到自己的工作区，不会和别的话题混在一起。</p>
+        </article>
+        <article class="note">
+          <strong>避免改错无痕</strong>
+          <p>任何一次变更都能追溯到旧状态，出错时能快速定位和恢复。</p>
+        </article>
+        <article class="note">
+          <strong>避免上下文污染</strong>
+          <p>系统机制的讨论不再混入业务子项目，长期维护会轻很多。</p>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <strong>适合怎么用这页？</strong>
+      你可以把它当作项目总览页、给新协作者的 onboarding 页面，或者作为后续补充流程图与规则说明的基底版本。
+      以后只要机制有变化，就继续按版本规则迭代这份 HTML 即可。
+    </footer>
+  </main>
+</body>
+</html>
