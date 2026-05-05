@@ -1,0 +1,331 @@
+"""
+初始化工作区.py
+──────────────────────────────────────────────────────────────────────
+将本脚本（或由其编译出的 EXE）放到任意目录，双击运行后，
+会在该目录下自动创建完整的「知识研究工作区」骨架：
+  .agents/rules/       ← 4 条 Rule 文件
+  .agents/skills/      ← 8 个 Skill 完整文件夹
+  .memory/            ← 初始化记忆目录
+  .history/           ← 历史归档目录（空）
+  .temp/              ← 临时文件与规范化异常归档目录
+  input/
+  output/
+
+如果目标目录已是旧工作区，会先把受管 Rules/Skills 备份到 .history，
+再用 EXE 内置模板替换对应骨架资产；memory、temp、input、output 只补缺。
+
+完成后弹出提示窗口，告知初始化结果。
+"""
+
+import os
+import sys
+import shutil
+import tkinter as tk
+from tkinter import messagebox
+from datetime import datetime
+from pathlib import Path
+
+SKELETON_VERSION = "1.7.1"
+
+SYSTEM_RECORD_FILES = {
+    "规则变更记录.md": "规则变更记录",
+    "技能变更记录.md": "技能变更记录",
+    "脚本治理记录.md": "脚本治理记录",
+    "教训库.md": "教训库",
+    "索引.md": "系统记录索引",
+}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 工具函数
+# ──────────────────────────────────────────────────────────────────────
+
+def get_templates_dir() -> Path:
+    """
+    PyInstaller 打包后，附加数据会解压到 sys._MEIPASS；
+    开发调试时，templates/ 就在脚本同级目录。
+    """
+    if getattr(sys, "frozen", False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).parent
+    return base / "templates"
+
+
+def get_workspace_root() -> Path:
+    """EXE 所在目录即目标工作区根目录。"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    else:
+        return Path(__file__).parent
+
+
+def ensure_dir(path: Path):
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def unique_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    parent = path.parent
+    i = 2
+    while True:
+        candidate = parent / f"{stem}_{i}{suffix}"
+        if not candidate.exists():
+            return candidate
+        i += 1
+
+
+def copy_tree_no_pycache(src: Path, dst: Path):
+    """递归复制目录，自动跳过 __pycache__。"""
+    ensure_dir(dst)
+    for item in src.iterdir():
+        if item.name == "__pycache__":
+            continue
+        target = dst / item.name
+        if item.is_dir():
+            copy_tree_no_pycache(item, target)
+        else:
+            shutil.copy2(item, target)
+
+
+def backup_existing_file(src: Path, history_dir: Path, ts: str) -> Path | None:
+    if not src.exists():
+        return None
+    ensure_dir(history_dir)
+    backup = unique_path(history_dir / f"{src.stem}_{ts}{src.suffix}")
+    shutil.copy2(src, backup)
+    return backup
+
+
+def backup_existing_dir(src: Path, history_dir: Path, ts: str) -> Path | None:
+    if not src.exists():
+        return None
+    ensure_dir(history_dir)
+    backup = unique_path(history_dir / f"{src.name}_{ts}")
+    shutil.copytree(src, backup, ignore=shutil.ignore_patterns("__pycache__"))
+    return backup
+
+
+def replace_managed_skill(src: Path, dst: Path, history_dir: Path, ts: str) -> Path | None:
+    backup = backup_existing_dir(dst, history_dir, ts)
+    if dst.exists():
+        shutil.rmtree(dst)
+    copy_tree_no_pycache(src, dst)
+    return backup
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 初始化记忆文件内容
+# ──────────────────────────────────────────────────────────────────────
+
+def memory_global_map_content() -> str:
+    return """\
+<!-- memory-version: 1.0.0 -->
+# 全局知识地图
+
+> 所有研究子项目的总索引，新建子项目时自动更新。
+
+| 话题 | 子项目文件夹 | 创建时间 | 状态 | 核心结论（一句话） |
+|------|------------|---------|------|----------------|
+"""
+
+
+def memory_system_record_content() -> str:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return f"""\
+# 系统记录 · 初始化记录
+
+> 记录工作区初始化与骨架升级事件，按时间追加。
+
+---
+
+## {now}
+
+**用户操作**：运行「初始化工作区」工具
+**工具做了**：创建或升级工作区骨架，版本 v{SKELETON_VERSION}
+
+---
+"""
+
+
+def named_system_record_content(title: str) -> str:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return f"""\
+# 系统记录 · {title}
+
+> 按时间追加记录。
+
+---
+
+## {now}
+
+**用户操作**：运行「初始化工作区」工具
+**工具做了**：补建系统记录文件，骨架版本 v{SKELETON_VERSION}
+
+---
+"""
+
+
+def write_if_missing(path: Path, content: str):
+    if not path.exists():
+        ensure_dir(path.parent)
+        path.write_text(content, encoding="utf-8")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 主初始化逻辑
+# ──────────────────────────────────────────────────────────────────────
+
+def initialize_workspace(workspace: Path, templates: Path) -> dict:
+    """
+    在 workspace 下创建完整骨架。
+    返回统计信息字典，用于弹窗展示。
+    """
+    stats = {
+        "rules": 0,
+        "skills": [],
+        "rule_backups": 0,
+        "skill_backups": 0,
+        "errors": [],
+    }
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+
+    # 1. 必须创建的空目录
+    skeleton_dirs = [
+        ".agents/rules",
+        ".agents/skills",
+        ".history/output",
+        ".history/.agents/rules",
+        ".history/.agents/skills",
+        ".history/.memory/知识提炼",
+        ".history/.memory/全局知识地图",
+        ".memory/对话记录",
+        ".memory/知识提炼",
+        ".memory/系统记录",
+        ".temp",
+        "input",
+        "output",
+    ]
+    for d in skeleton_dirs:
+        ensure_dir(workspace / d)
+
+    # 2. 复制 rules
+    rules_src = templates / "rules"
+    rules_dst = workspace / ".agents" / "rules"
+    if rules_src.exists():
+        for f in rules_src.iterdir():
+            if f.is_file():
+                backup = backup_existing_file(
+                    rules_dst / f.name,
+                    workspace / ".history" / ".agents" / "rules",
+                    ts,
+                )
+                if backup:
+                    stats["rule_backups"] += 1
+                shutil.copy2(f, rules_dst / f.name)
+                stats["rules"] += 1
+    else:
+        stats["errors"].append("模板 rules/ 目录不存在")
+
+    # 3. 复制 skills
+    skills_src = templates / "skills"
+    skills_dst = workspace / ".agents" / "skills"
+    if skills_src.exists():
+        for skill_dir in sorted(skills_src.iterdir()):
+            if skill_dir.is_dir():
+                backup = replace_managed_skill(
+                    skill_dir,
+                    skills_dst / skill_dir.name,
+                    workspace / ".history" / ".agents" / "skills",
+                    ts,
+                )
+                if backup:
+                    stats["skill_backups"] += 1
+                stats["skills"].append(skill_dir.name)
+    else:
+        stats["errors"].append("模板 skills/ 目录不存在")
+
+    # 4. 初始化 .memory 文件（仅当文件不存在时写入）
+    write_if_missing(
+        workspace / ".memory" / "全局知识地图.md",
+        memory_global_map_content(),
+    )
+    for file_name, title in SYSTEM_RECORD_FILES.items():
+        write_if_missing(
+            workspace / ".memory" / "系统记录" / file_name,
+            named_system_record_content(title),
+        )
+
+    return stats
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 弹窗
+# ──────────────────────────────────────────────────────────────────────
+
+def show_result_dialog(workspace: Path, stats: dict):
+    """弹出自定义结果窗口，展示初始化详情。"""
+    root = tk.Tk()
+    root.withdraw()  # 先隐藏主窗口
+
+    if stats["errors"]:
+        error_text = "\n".join(f"  ⚠ {e}" for e in stats["errors"])
+        message = (
+            f"工作区初始化完成（部分警告）\n\n"
+            f"路径：{workspace}\n\n"
+            f"警告：\n{error_text}"
+        )
+        messagebox.showwarning("初始化完成（有警告）", message)
+    else:
+        skills_text = "\n".join(f"    · {s}" for s in stats["skills"])
+        message = (
+            f"✅  工作区骨架创建/升级完成！\n\n"
+            f"路径：{workspace}\n\n"
+            f"已创建：\n"
+            f"  · .agents/rules       （{stats['rules']} 个 Rule 文件）\n"
+            f"  · .agents/skills      （{len(stats['skills'])} 个 Skill 文件夹）\n"
+            f"{skills_text}\n"
+            f"  · .memory/           （已初始化记忆文件）\n"
+            f"  · .history/          （空的历史归档目录）\n"
+            f"  · .temp/             （临时文件与异常归档目录）\n"
+            f"  · input/  output/\n\n"
+            f"升级备份：\n"
+            f"  · Rule 备份 {stats['rule_backups']} 个\n"
+            f"  · Skill 备份 {stats['skill_backups']} 个\n\n"
+            f"现在可以开始使用这个工作区了。"
+        )
+        messagebox.showinfo("🎉 初始化完成", message)
+
+    root.destroy()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 入口
+# ──────────────────────────────────────────────────────────────────────
+
+def main():
+    workspace = get_workspace_root()
+    templates = get_templates_dir()
+
+    # 安全检查：防止在模板源目录下运行覆盖自己
+    agent_dir = workspace / ".agents"
+    if agent_dir.exists() and any(agent_dir.iterdir()):
+        root = tk.Tk()
+        root.withdraw()
+        answer = messagebox.askyesno(
+            "目录已存在内容",
+            f"目标目录已存在 .agents/ 内容：\n{workspace}\n\n是否继续升级骨架？\n\n工具会先备份受管 Rules/Skills，再替换为内置 v{SKELETON_VERSION} 模板；output、input、memory、temp 只补缺。",
+        )
+        root.destroy()
+        if not answer:
+            return
+
+    stats = initialize_workspace(workspace, templates)
+    show_result_dialog(workspace, stats)
+
+
+if __name__ == "__main__":
+    main()

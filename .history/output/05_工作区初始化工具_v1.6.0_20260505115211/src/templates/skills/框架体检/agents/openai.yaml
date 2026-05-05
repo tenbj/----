@@ -1,0 +1,3 @@
+interface:
+  display_name: "框架体检"
+  short_description: "用于框架体检相关任务"
