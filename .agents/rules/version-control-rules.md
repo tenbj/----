@@ -7,6 +7,8 @@ trigger: always_on
 所有 output/ 下的文件在每次增、删、改前，必须先执行版本控制备份。
 具体执行步骤参考并调用 Skill：版本控制备份
 
+备份必须由 `.agents/skills/版本控制备份/scripts/backup.ps1` 生成，禁止 AI 或人工手工 `Copy-Item` / `Move-Item` / `New-Item` 到 `.history`，也禁止自行拼接 `.history` 路径。项目路径可能变化，调用脚本时优先使用当前项目内相对路径。
+
 例外与补充：
 
 - output/ 下的子项目文件夹使用 PROJECT 模式：
@@ -18,6 +20,8 @@ trigger: always_on
   - **备份脚本会自动同步 `.memory/对话记录/{子项目文件夹名}.md` 的文件名**（与子项目文件夹版本号保持一致）
 - `.agents/rules/` 下的配置文件，只做 `.history` 备份，文件名不带版本号
 - `.agents/skills/` 下的 Skill 文件夹，只做 `.history` 快照，原文件夹名称不变
+  - 唯一合法落点：`.history/.agents/skills/{Skill名}_{yyyyMMddHHmmss}/`
+  - `.history/skills/` 属于错误路径，发现后必须停止修改并先纠偏
 - `.memory/对话记录/` 与 `.memory/系统记录/` 是追加型记忆，不做版本备份
 - `.memory/知识提炼/` 与 `.memory/全局知识地图.md` 使用 `MEMORY` 模式：
   - 当前文件名保持稳定，不在 `.memory/` 中堆多个 `v*` 文件

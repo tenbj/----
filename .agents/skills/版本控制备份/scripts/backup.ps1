@@ -43,16 +43,25 @@ function Get-RelativePath {
         [string]$Root
     )
 
-    $normalizedPath = Normalize-PathString $Path
-    $normalizedRoot = Normalize-PathString $Root
-    return $normalizedPath.Substring($normalizedRoot.Length).TrimStart('\')
+    $normalizedPath = (Normalize-PathString ([System.IO.Path]::GetFullPath($Path))).TrimEnd('\')
+    $normalizedRoot = (Normalize-PathString ([System.IO.Path]::GetFullPath($Root))).TrimEnd('\')
+    if ($normalizedPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) { return "" }
+
+    $rootPrefix = $normalizedRoot + "\"
+    if (-not $normalizedPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Error "Target must stay inside workspace root: $Path"
+        exit 1
+    }
+    return $normalizedPath.Substring($rootPrefix.Length)
 }
 
 function Find-WorkspaceRoot {
     param([string]$StartPath)
-    $searchDir = $StartPath
+    if (-not $StartPath) { return $null }
+    $searchDir = [System.IO.Path]::GetFullPath($StartPath)
     while ($searchDir) {
-        if (Test-Path (Join-Path $searchDir ".history")) {
+        if ((Test-Path -LiteralPath (Join-Path $searchDir ".history")) -and
+            (Test-Path -LiteralPath (Join-Path $searchDir ".agents"))) {
             return $searchDir
         }
         $parent = Split-Path $searchDir -Parent
@@ -60,6 +69,30 @@ function Find-WorkspaceRoot {
         $searchDir = $parent
     }
     return $null
+}
+
+function Resolve-ProjectPath {
+    param(
+        [string]$Path,
+        [string]$WorkspaceRoot
+    )
+
+    $rootFull = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        $fullPath = [System.IO.Path]::GetFullPath($Path)
+    } else {
+        $fullPath = [System.IO.Path]::GetFullPath((Join-Path $rootFull $Path))
+    }
+
+    $normalizedRoot = (Normalize-PathString $rootFull).TrimEnd('\')
+    $normalizedFull = (Normalize-PathString $fullPath).TrimEnd('\')
+    $rootPrefix = $normalizedRoot + "\"
+    if (-not ($normalizedFull.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+              $normalizedFull.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase))) {
+        Write-Error "Target escapes workspace root: $Path"
+        exit 1
+    }
+    return $fullPath
 }
 
 function Parse-Version {
@@ -249,20 +282,24 @@ function Update-VersionRecord {
     }
 }
 
-if (-not (Test-Path $TargetPath)) {
-    Write-Error "Target not found: $TargetPath"
-    exit 1
-}
-
-$item = Get-Item $TargetPath
-$normalizedTarget = Normalize-PathString $TargetPath
-$startSearch = if ($item.PSIsContainer) { $TargetPath } else { Split-Path $TargetPath -Parent }
-$workspaceRoot = Find-WorkspaceRoot $startSearch
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$workspaceRoot = Find-WorkspaceRoot $scriptDir
 
 if (-not $workspaceRoot) {
-    Write-Error "Workspace root not found (no .history folder). Create .history in project root first."
+    Write-Error "Workspace root not found from script path (expected .agents and .history in project root)."
     exit 1
 }
+
+$originalTargetPath = $TargetPath
+$TargetPath = Resolve-ProjectPath -Path $TargetPath -WorkspaceRoot $workspaceRoot
+
+if (-not (Test-Path -LiteralPath $TargetPath)) {
+    Write-Error "Target not found: $originalTargetPath"
+    exit 1
+}
+
+$item = Get-Item -LiteralPath $TargetPath
+$normalizedTarget = Normalize-PathString $TargetPath
 
 $timestamp = Get-Date -Format "yyyyMMddHHmmss"
 $displayTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -374,12 +411,22 @@ if ($Mode -eq "FOLDER") {
         exit 1
     }
 
-    $folderItem = Get-Item $TargetPath
+    $folderItem = Get-Item -LiteralPath $TargetPath
     $folderName = $folderItem.Name
     $relativePath = Get-RelativePath -Path $TargetPath -Root $workspaceRoot
     $relativeParent = Split-Path $relativePath -Parent
+    $validFolderTarget = ($relativePath -match '^\.agents\\skills\\[^\\]+$') -or ($relativePath -match '^\.system\\[^\\]+$')
+    if (-not $validFolderTarget) {
+        Write-Error "FOLDER mode only supports one .agents/skills/<skill> folder or one .system/<folder>. Got: $relativePath"
+        exit 1
+    }
+
     $snapshotName = "${folderName}_${timestamp}"
     $snapshotDir = Join-Path (Join-Path $historyRoot $relativeParent) $snapshotName
+    if ((Normalize-PathString $snapshotDir) -match '\\.history\\skills\\') {
+        Write-Error "Invalid skill snapshot path. Skill backups must go under .history/.agents/skills/."
+        exit 1
+    }
 
     Ensure-Directory $snapshotDir
     Copy-Item -Path (Join-Path $TargetPath "*") -Destination $snapshotDir -Recurse -Force
