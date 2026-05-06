@@ -121,10 +121,22 @@ function Get-ProjectSubFolderVersion($folderName, $spec) {
     return ""
 }
 
+function Get-SubFolderPayloadItems($subDir) {
+    if (-not (Test-Path -LiteralPath $subDir)) { return @() }
+    return @(Get-ChildItem -LiteralPath $subDir -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne ".gitkeep" } |
+        Sort-Object PSIsContainer, CreationTime, Name)
+}
+
 function Get-ExpectedSubFolderVersion($subDir) {
-    $files = Get-SubFolderContentFiles $subDir
-    if ($files.Count -eq 0) { return "0.0.0" }
     $folderName = Split-Path $subDir -Leaf
+    if ($folderName -match '^03_代码程序_v') {
+        $items = Get-SubFolderPayloadItems $subDir
+        if ($items.Count -eq 0) { return "0.0.0" }
+    } else {
+        $files = Get-SubFolderContentFiles $subDir
+        if ($files.Count -eq 0) { return "0.0.0" }
+    }
     if ($folderName -match '_v(\d+\.\d+\.\d+)$' -and $Matches[1] -ne "0.0.0") {
         return $Matches[1]
     }

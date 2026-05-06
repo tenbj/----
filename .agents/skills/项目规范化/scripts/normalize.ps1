@@ -267,10 +267,22 @@ function Get-ProjectSubFolderVersion($folderName, $spec) {
     return ""
 }
 
+function Get-SubFolderPayloadItems($subDir) {
+    if (-not (Test-Path -LiteralPath $subDir)) { return @() }
+    return @(Get-ChildItem -LiteralPath $subDir -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne ".gitkeep" } |
+        Sort-Object PSIsContainer, CreationTime, Name)
+}
+
 function Get-ExpectedSubFolderVersion($subDir) {
-    $files = Get-SubFolderContentFiles $subDir
-    if ($files.Count -eq 0) { return "0.0.0" }
     $folderName = Split-Path $subDir -Leaf
+    if ($folderName -match '^03_代码程序_v') {
+        $items = Get-SubFolderPayloadItems $subDir
+        if ($items.Count -eq 0) { return "0.0.0" }
+    } else {
+        $files = Get-SubFolderContentFiles $subDir
+        if ($files.Count -eq 0) { return "0.0.0" }
+    }
     if ($folderName -match '_v(\d+\.\d+\.\d+)$' -and $Matches[1] -ne "0.0.0") {
         return $Matches[1]
     }
@@ -785,11 +797,9 @@ if (Test-Path $mem) {
     $memSys  = Join-Path $mem $S_sys_rec
     $memKnow = Join-Path $mem $S_knowledge
     $memMap  = Join-Path $mem "$($S_map).md"
-    $memSystem = Join-Path $mem ".system"
-    $memSystemStandards = Join-Path $memSystem "standards"
 
     # Subdirs
-    @($memConv, $memSys, $memKnow, $memSystem, $memSystemStandards) | ForEach-Object {
+    @($memConv, $memSys, $memKnow) | ForEach-Object {
         if (-not (Test-Path $_)) {
             Write-Host "  [FAIL] Missing: .memory/$(Split-Path $_ -Leaf)/"
             $issues++
@@ -893,7 +903,7 @@ if (Test-Path $mem) {
 
     # Extra dirs in .memory/
     $memDirs = Get-ChildItem $mem -Directory | ForEach-Object { $_.Name }
-    $allowedDirs = if ($workspaceSpec) { @($workspaceSpec.memoryCleanRules.allowedDirs) } else { @($S_conv, $S_sys_rec, $S_knowledge, ".system") }
+    $allowedDirs = if ($workspaceSpec) { @($workspaceSpec.memoryCleanRules.allowedDirs) } else { @($S_conv, $S_sys_rec, $S_knowledge) }
     foreach ($md in $memDirs) {
         if ($allowedDirs -notcontains $md) {
             Write-Host "  [WARN] Extra dir in .memory/: $md/"

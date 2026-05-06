@@ -1,6 +1,6 @@
 {
   "$schema": "workspace-spec/1.0.0",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "工作区骨架规格 — 单一事实源（SSOT）。framework-check.ps1、normalize.ps1、init_workspace.py 均从此文件读取标准。",
 
   "rootDirectories": [
@@ -56,8 +56,6 @@
       ".memory/对话记录",
       ".memory/知识提炼",
       ".memory/系统记录",
-      ".memory/.system",
-      ".memory/.system/standards",
       ".system/standards",
       ".temp",
       "input",
@@ -135,10 +133,6 @@
       "historyMirrorDirectories": [
         ".history/.system",
         ".history/.system/standards"
-      ],
-      "memoryMirrorDirectories": [
-        ".memory/.system",
-        ".memory/.system/standards"
       ],
       "backup": {
         "mode": "FOLDER",
@@ -248,7 +242,7 @@
       { "path": ".memory/知识提炼/", "pattern": "_v\\d+\\.\\d+\\.\\d+\\.[^.]+$", "reason": "历史副本应在 .history/.memory/知识提炼/" },
       { "path": ".memory/", "pattern": "全局知识地图_v", "reason": "历史副本应在 .history/.memory/全局知识地图/" }
     ],
-    "allowedDirs": ["对话记录", "系统记录", "知识提炼", ".system"],
+    "allowedDirs": ["对话记录", "系统记录", "知识提炼"],
     "rootFiles": ["全局知识地图.md"]
   }
 }
