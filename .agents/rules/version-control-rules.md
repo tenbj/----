@@ -2,12 +2,22 @@
 trigger: always_on
 ---
 
-> ⚠️ **强制门：版本控制 — 对 output/ 或 .agents/ 下的文件执行任何增、删、改操作（Write/SearchReplace/WriteAllText/新建/删除）之前，必须先执行版本控制备份。备份未完成 = 操作不允许。不得省略、不得事后补、不得因增删改幅度小跳过。**
+> ⚠️ **强制门：版本控制 — 对 output/、.agents/、.system/ 或版本化 .memory 文件执行任何增、删、改操作（Write/SearchReplace/WriteAllText/新建/删除）之前，必须先执行版本控制备份。备份未完成 = 操作不允许。不得省略、不得事后补、不得因增删改幅度小跳过。**
+>
+> ⚠️ **强制门：核心骨架授权 — `.system/standards/`、`.agents/rules/`、`.agents/skills/`、`.agents/skills/*/scripts/`、05 初始化模板/源码/构建产物、`.memory/全局知识地图.md`、`.memory/知识提炼/*.md` 属于核心骨架或版本化核心文件。修改这些路径前必须先确认用户已明确授权。备份是必要条件，不等于授权。**
 
-所有 output/ 下的文件在每次增、删、改前，必须先执行版本控制备份。
+所有 output/、.agents/、.system/ 和版本化 .memory 文件在每次增、删、改前，必须先执行版本控制备份。
 具体执行步骤参考并调用 Skill：版本控制备份
 
 备份必须由 `.agents/skills/版本控制备份/scripts/backup.ps1` 生成，禁止 AI 或人工手工 `Copy-Item` / `Move-Item` / `New-Item` 到 `.history`，也禁止自行拼接 `.history` 路径。项目路径可能变化，调用脚本时优先使用当前项目内相对路径。
+
+修改核心骨架前必须完成以下检查：
+
+1. 路径是否属于核心骨架或版本化核心文件
+2. 用户是否给出明确授权
+3. 是否已列出目标文件、修改理由和影响范围
+4. 是否已选择正确备份模式并执行成功
+5. 是否确认不触碰未列出的核心文件
 
 例外与补充：
 
@@ -22,6 +32,7 @@ trigger: always_on
 - `.agents/skills/` 下的 Skill 文件夹，只做 `.history` 快照，原文件夹名称不变
   - 唯一合法落点：`.history/.agents/skills/{Skill名}_{yyyyMMddHHmmss}/`
   - `.history/skills/` 属于错误路径，发现后必须停止修改并先纠偏
+- `.system/standards/` 使用 FOLDER 模式：整个 `standards` 文件夹快照到 `.history/.system/standards_{yyyyMMddHHmmss}/`，live 文件夹保持原名不变
 - `.memory/对话记录/` 与 `.memory/系统记录/` 是追加型记忆，不做版本备份
 - `.memory/知识提炼/` 与 `.memory/全局知识地图.md` 使用 `MEMORY` 模式：
   - 当前文件名保持稳定，不在 `.memory/` 中堆多个 `v*` 文件

@@ -1,3 +1,0 @@
-interface:
-  display_name: "项目规范化"
-  short_description: "脚本修复后由大模型按标准复核 output、.history、.memory 并记录异常"
